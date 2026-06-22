@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -32,10 +33,20 @@ class _LoginScreenState extends State<LoginScreen> {
           password: password
         );
       } else {
-        await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: email, 
-          password: password
+        final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
         );
+
+        // Firestore에 유저 정보 저장 (검색용)
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(credential.user!.uid)
+            .set({
+          'email': email,
+          'uid': credential.user!.uid,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
       }
 
       if (mounted) {
