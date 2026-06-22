@@ -88,6 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 keyboardType: TextInputType.emailAddress,
               ),
+              const SizedBox(height: 16),
 
               // 비밀번호 입력
               TextField(

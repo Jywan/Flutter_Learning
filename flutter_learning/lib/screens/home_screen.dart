@@ -1,14 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'login_screen.dart';
 import 'chat_screen.dart';
 import 'search_screen.dart';
 import 'profile_screen.dart';
 
-
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  String _formatTime(Timestamp? timestamp) {
+    if (timestamp == null) return '';
+    final date = timestamp.toDate();
+    final now = DateTime.now();
+    if (date.day == now.day && date.month == now.month && date.year == now.year) {
+      return DateFormat('HH:mm').format(date);
+    }
+    return DateFormat('MM/dd').format(date);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,8 +67,18 @@ class HomeScreen extends StatelessWidget {
 
           if (chats.isEmpty) {
             return const Center(
-              child: Text('채팅방이 없습니다.\n오른쪽 아래 버튼으로 대화를 시작하세요!',
-                  textAlign: TextAlign.center),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('채팅방이 없습니다.',
+                      style: TextStyle(fontSize: 16, color: Colors.grey)),
+                  SizedBox(height: 8),
+                  Text('오른쪽 아래 버튼으로 대화를 시작하세요!',
+                      style: TextStyle(color: Colors.grey)),
+                ],
+              ),
             );
           }
 
@@ -69,20 +89,52 @@ class HomeScreen extends StatelessWidget {
               final otherUserEmail = (chat['userEmails'] as List<dynamic>)
                   .firstWhere((email) => email != currentUser.email,
                       orElse: () => '알 수 없음');
+              final time = _formatTime(chat['lastMessageTime'] as Timestamp?);
 
-              return ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.person)),
-                title: Text(otherUserEmail),
-                subtitle: Text(chat['lastMessage'] ?? ''),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChatScreen(
-                        chatId: chats[index].id,
-                        otherUserEmail: otherUserEmail,
-                      ),
+              return FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('users')
+                    .where('email', isEqualTo: otherUserEmail)
+                    .limit(1)
+                    .get(),
+                builder: (context, userSnapshot) {
+                  String nickname = otherUserEmail;
+                  String? profileUrl;
+
+                  if (userSnapshot.hasData && userSnapshot.data!.docs.isNotEmpty) {
+                    final userData = userSnapshot.data!.docs.first.data()
+                        as Map<String, dynamic>;
+                    nickname = userData['nickname'] ?? otherUserEmail;
+                    profileUrl = userData['profileImageUrl'];
+                  }
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundImage:
+                          profileUrl != null ? NetworkImage(profileUrl) : null,
+                      child: profileUrl == null
+                          ? const Icon(Icons.person)
+                          : null,
                     ),
+                    title: Text(nickname),
+                    subtitle: Text(
+                      chat['lastMessage'] ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: Text(time,
+                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatScreen(
+                            chatId: chats[index].id,
+                            otherUserEmail: otherUserEmail,
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               );

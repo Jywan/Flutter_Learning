@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -19,6 +20,30 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  String _otherUserNickname = '';
+  String? _otherUserProfileUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOtherUserInfo();
+  }
+
+  Future<void> _loadOtherUserInfo() async {
+    final query = await FirebaseFirestore.instance
+        .collection('users')
+        .where('email', isEqualTo: widget.otherUserEmail)
+        .limit(1)
+        .get();
+
+    if (query.docs.isNotEmpty) {
+      final data = query.docs.first.data();
+      setState(() {
+        _otherUserNickname = data['nickname'] ?? widget.otherUserEmail;
+        _otherUserProfileUrl = data['profileImageUrl'];
+      });
+    }
+  }
 
   void _sendMessage() async {
     final text = _messageController.text.trim();
@@ -38,7 +63,6 @@ class _ChatScreenState extends State<ChatScreen> {
       'timestamp': FieldValue.serverTimestamp(),
     });
 
-    // 마지막 메시지 업데이트
     await FirebaseFirestore.instance
         .collection('chats')
         .doc(widget.chatId)
@@ -46,6 +70,23 @@ class _ChatScreenState extends State<ChatScreen> {
       'lastMessage': text,
       'lastMessageTime': FieldValue.serverTimestamp(),
     });
+
+    // 스크롤 맨 아래로
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  String _formatTime(Timestamp? timestamp) {
+    if (timestamp == null) return '';
+    final date = timestamp.toDate();
+    return DateFormat('HH:mm').format(date);
   }
 
   @override
@@ -54,12 +95,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.otherUserEmail),
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundImage: _otherUserProfileUrl != null
+                  ? NetworkImage(_otherUserProfileUrl!)
+                  : null,
+              child: _otherUserProfileUrl == null
+                  ? const Icon(Icons.person, size: 16)
+                  : null,
+            ),
+            const SizedBox(width: 8),
+            Text(_otherUserNickname.isNotEmpty
+                ? _otherUserNickname
+                : widget.otherUserEmail),
+          ],
+        ),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: Column(
         children: [
-          // 메시지 리스트
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
@@ -77,24 +133,68 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 return ListView.builder(
                   controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final msg = messages[index].data() as Map<String, dynamic>;
                     final isMe = msg['senderId'] == currentUser.uid;
+                    final time = _formatTime(msg['timestamp'] as Timestamp?);
 
-                    return Align(
-                      alignment:
-                          isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 4),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isMe ? Colors.blue[100] : Colors.grey[200],
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(msg['text'] ?? ''),
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        mainAxisAlignment:
+                            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          if (!isMe) ...[
+                            CircleAvatar(
+                              radius: 14,
+                              backgroundImage: _otherUserProfileUrl != null
+                                  ? NetworkImage(_otherUserProfileUrl!)
+                                  : null,
+                              child: _otherUserProfileUrl == null
+                                  ? const Icon(Icons.person, size: 14)
+                                  : null,
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          if (isMe)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 4),
+                              child: Text(time,
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                            ),
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isMe ? Colors.blue[400] : Colors.grey[200],
+                                borderRadius: BorderRadius.only(
+                                  topLeft: const Radius.circular(16),
+                                  topRight: const Radius.circular(16),
+                                  bottomLeft: Radius.circular(isMe ? 16 : 4),
+                                  bottomRight: Radius.circular(isMe ? 4 : 16),
+                                ),
+                              ),
+                              child: Text(
+                                msg['text'] ?? '',
+                                style: TextStyle(
+                                  color: isMe ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (!isMe)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: Text(time,
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Colors.grey)),
+                            ),
+                        ],
                       ),
                     );
                   },
@@ -105,33 +205,40 @@ class _ChatScreenState extends State<ChatScreen> {
 
           // 메시지 입력창
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
-                BoxShadow(color: Colors.grey.shade300, blurRadius: 4),
+                BoxShadow(color: Colors.grey.shade200, blurRadius: 4, offset: const Offset(0, -1)),
               ],
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: const InputDecoration(
-                      hintText: '메시지를 입력하세요...',
-                      border: OutlineInputBorder(),
-                      contentPadding:
-                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: SafeArea(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      decoration: InputDecoration(
+                        hintText: '메시지를 입력하세요...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                      onSubmitted: (_) => _sendMessage(),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.blue),
-                  onPressed: _sendMessage,
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.blue,
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white, size: 20),
+                      onPressed: _sendMessage,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

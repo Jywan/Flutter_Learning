@@ -51,7 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (kIsWeb) {
         final bytes = await picked.readAsBytes();
-        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpg'));
+        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
       } else {
         await ref.putFile(File(picked.path));
       }
