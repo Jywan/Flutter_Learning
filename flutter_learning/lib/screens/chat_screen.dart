@@ -1,7 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -22,6 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   String _otherUserNickname = '';
   String? _otherUserProfileUrl;
+  bool _isUploading = false;
 
   @override
   void initState() {
@@ -71,7 +76,67 @@ class _ChatScreenState extends State<ChatScreen> {
       'lastMessageTime': FieldValue.serverTimestamp(),
     });
 
-    // 스크롤 맨 아래로
+    _scrollToBottom();
+  }
+
+  Future<void> _sendImage() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, maxWidth: 1024);
+
+    if (picked == null) return;
+
+    setState(() => _isUploading = true);
+
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser!;
+      final timestamp = DateTime.now().microsecondsSinceEpoch;
+      final ref = FirebaseStorage.instance
+        .ref()
+        .child('chats/${widget.chatId}/$timestamp.jpg');
+      
+      if (kIsWeb) {
+        final bytes = await picked.readAsBytes();
+        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      } else {
+        await ref.putFile(File(picked.path));
+      }
+
+      final imageUrl = await ref.getDownloadURL();
+
+      await FirebaseFirestore.instance
+        .collection('chats')
+        .doc(widget.chatId)
+        .collection('messages')
+        .add({
+          'text': '',
+          'imageUrl': imageUrl,
+          'senderId': currentUser.uid,
+          'senderEmail': currentUser.email,
+          'type': 'image',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      
+      await FirebaseFirestore.instance
+        .collection('chats')
+        .doc(widget.chatId)
+        .update({
+          'lastMessage': '사진',
+          'lastMessageTime': FieldValue.serverTimestamp(),
+        });
+
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이미지 전송 실패: $e')),
+        );
+      }
+    } finally {
+      setState(() => _isUploading = false);
+    }
+  }
+
+  void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -139,6 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     final msg = messages[index].data() as Map<String, dynamic>;
                     final isMe = msg['senderId'] == currentUser.uid;
                     final time = _formatTime(msg['timestamp'] as Timestamp?);
+                    final type = msg['type'] ?? 'text';
 
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
@@ -168,8 +234,10 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           Flexible(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 10),
+                              padding: type == 'image'
+                                ? const EdgeInsets.all(4)
+                                : const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 10),
                               decoration: BoxDecoration(
                                 color: isMe ? Colors.blue[400] : Colors.grey[200],
                                 borderRadius: BorderRadius.only(
@@ -179,12 +247,32 @@ class _ChatScreenState extends State<ChatScreen> {
                                   bottomRight: Radius.circular(isMe ? 4 : 16),
                                 ),
                               ),
-                              child: Text(
-                                msg['text'] ?? '',
-                                style: TextStyle(
-                                  color: isMe ? Colors.white : Colors.black87,
+                              child: type == 'image'
+                                ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.network(
+                                    msg['imageUrl'] ?? '',
+                                    width: 200,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: 
+                                      (context, child, loadingProgress) {
+                                        if (loadingProgress == null) return child;
+                                        return const SizedBox(
+                                          width: 200,
+                                          height: 150,
+                                          child: Center(
+                                            child:
+                                              CircularProgressIndicator()),
+                                        );
+                                      },
+                                  ),
+                                )
+                              : Text(
+                                  msg['text'] ?? '',
+                                  style: TextStyle(
+                                    color: isMe ? Colors.white : Colors.black87,
+                                  ),
                                 ),
-                              ),
                             ),
                           ),
                           if (!isMe)
@@ -202,6 +290,22 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
+          // 업로드 중 표시
+          if (_isUploading)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2,)),
+                  SizedBox(width: 8),
+                  Text('이미지 업로드 중...', style: TextStyle(color: Colors.grey)),
+                ],
+              ),
+            ),
 
           // 메시지 입력창
           Container(
@@ -209,12 +313,19 @@ class _ChatScreenState extends State<ChatScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
-                BoxShadow(color: Colors.grey.shade200, blurRadius: 4, offset: const Offset(0, -1)),
+                BoxShadow(
+                  color: Colors.grey.shade200, 
+                  blurRadius: 4, 
+                  offset: const Offset(0, -1)),
               ],
             ),
             child: SafeArea(
               child: Row(
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.image, color: Colors.grey),
+                    onPressed: _isUploading ? null : _sendImage,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _messageController,
