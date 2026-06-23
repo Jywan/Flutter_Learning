@@ -1,3 +1,4 @@
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -48,6 +49,13 @@ class _LoginScreenState extends State<LoginScreen> {
           'createdAt': FieldValue.serverTimestamp(),
         });
       }
+
+      // 로그인시 온라인 상태 설정
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'isOnline': true,
+        'lastSeen': FieldValue.serverTimestamp(),
+      });
 
       if (mounted) {
         Navigator.pushReplacement(

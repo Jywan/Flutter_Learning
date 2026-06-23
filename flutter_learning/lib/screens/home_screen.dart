@@ -43,6 +43,13 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid != null) {
+                await FirebaseFirestore.instance.collection('users').doc(uid).update({
+                  'isOnline': false,
+                  'lastSeen': FieldValue.serverTimestamp(),
+                });
+              }
               await FirebaseAuth.instance.signOut();
               if (context.mounted) {
                 Navigator.pushReplacement(

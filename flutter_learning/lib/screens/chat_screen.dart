@@ -29,6 +29,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isUploading = false;
   bool _isGroup = false;
   int _memberCount = 0;
+  bool _isOtherOnline = false;
+
 
   @override
   void initState() {
@@ -68,6 +70,17 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _otherUserNickname = data['nickname'] ?? widget.otherUserEmail;
         _otherUserProfileUrl = data['profileImageUrl'];
+        _isOtherOnline = data['isOnline'] ?? false;
+      });
+
+      // 실시간으로 온라인 상태 감지
+      query.docs.first.reference.snapshots().listen((snapshot) {
+        if (snapshot.exists && mounted) {
+          final updatedData = snapshot.data()!;
+          setState(() {
+            _isOtherOnline = updatedData['isOnline'] ?? false;
+          });
+        }
       });
     }
   }
@@ -270,14 +283,28 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                _isGroup
-                    ? widget.otherUserEmail
-                    : (_otherUserNickname.isNotEmpty
-                        ? _otherUserNickname
-                        : widget.otherUserEmail),
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _isGroup
+                        ? widget.otherUserEmail
+                        : (_otherUserNickname.isNotEmpty
+                            ? _otherUserNickname
+                            : widget.otherUserEmail),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  if (!_isGroup) 
+                    Text(
+                      _isOtherOnline ? '온라인' : '오프라인',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _isOtherOnline ? Colors.green : Colors.grey,
+                      ),
+                    ),
+                ],
+              )
             ),
           ],
         ),
