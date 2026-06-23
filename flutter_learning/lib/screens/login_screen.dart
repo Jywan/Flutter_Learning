@@ -99,6 +99,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIcon: Icon(Icons.lock),
                 ),
                 obscureText: true,
+                onSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 8),
 

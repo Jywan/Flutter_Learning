@@ -17,29 +17,42 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   List<Map<String, dynamic>> _selectedUsers = [];
 
   void _searchUsers() async {
-    final query = _searchController.text.trim();
-    if (query.isEmpty) return;
+  final query = _searchController.text.trim();
+  if (query.isEmpty) return;
 
-    final currentUser = FirebaseAuth.instance.currentUser!;
+  final currentUser = FirebaseAuth.instance.currentUser!;
 
-    final result = await FirebaseFirestore.instance
+  // 이메일 prefix 검색 (시작 문자열 매칭)
+  final emailResult = await FirebaseFirestore.instance
       .collection('users')
-      .where('email', isEqualTo: query)
+      .where('email', isGreaterThanOrEqualTo: query)
+      .where('email', isLessThan: '$query\uf8ff')
       .get();
 
-    setState(() {
-      _searchResults = result.docs
-        .where((doc) => doc['email'] != currentUser.email)
-        .where((doc) => 
-          !_selectedUsers.any((selected) => selected['uid'] == doc.id))
-        .map((doc) => {
-          'uid': doc.id,
-          'email': doc['email'],
-          'nickname': doc['nickname'] ?? doc['email'],
-        })
-      .toList();
-    });
+  // 닉네임 prefix 검색 (시작 문자열 매칭)
+  final nicknameResult = await FirebaseFirestore.instance
+      .collection('users')
+      .where('nickname', isGreaterThanOrEqualTo: query)
+      .where('nickname', isLessThan: '$query\uf8ff')
+      .get();
+
+  // 중복 제거 후 합치기
+  final allDocs = <String, Map<String, dynamic>>{};
+  for (final doc in [...emailResult.docs, ...nicknameResult.docs]) {
+    if (doc['email'] != currentUser.email &&
+        !_selectedUsers.any((selected) => selected['uid'] == doc.id)) {
+      allDocs[doc.id] = {
+        'uid': doc.id,
+        'email': doc['email'],
+        'nickname': doc['nickname'] ?? doc['email'],
+      };
+    }
   }
+
+  setState(() {
+    _searchResults = allDocs.values.toList();
+  });
+}
 
   void _addUser(Map<String, dynamic> user) {
     setState(() {
@@ -144,7 +157,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                   child: TextField(
                     controller: _searchController,
                     decoration: const InputDecoration(
-                      hintText: '이메일로 검색...',
+                      hintText: '이메일 또는 닉네임으로 검색...',
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _searchUsers(),
