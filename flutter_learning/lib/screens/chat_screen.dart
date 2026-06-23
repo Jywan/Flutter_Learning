@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -30,12 +31,31 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isGroup = false;
   int _memberCount = 0;
   bool _isOtherOnline = false;
+  bool _isOtherTyping = false;
+  Timer? _typingTimer;
 
 
   @override
   void initState() {
     super.initState();
     _loadChatInfo();
+  }
+
+  @override
+  void dispose() {
+    _typingTimer?.cancel();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('typing')
+          .doc(user.uid)
+          .set({'isTyping': false});
+    }
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadChatInfo() async {
@@ -55,6 +75,32 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!_isGroup) {
       _loadOtherUserInfo();
+    }
+
+    // 상대방 타이핑 상태 감지
+    if (!_isGroup) {
+      final otherUidQuery = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isEqualTo: widget.otherUserEmail)
+          .limit(1)
+          .get();
+
+      if (otherUidQuery.docs.isNotEmpty) {
+        final otherUid = otherUidQuery.docs.first.id;
+        FirebaseFirestore.instance
+            .collection('chats')
+            .doc(widget.chatId)
+            .collection('typing')
+            .doc(otherUid)
+            .snapshots()
+            .listen((snapshot) {
+          if (mounted) {
+            setState(() {
+              _isOtherTyping = snapshot.exists && (snapshot.data()?['isTyping'] ?? false);
+            });
+          }
+        });
+      }
     }
   }
 
@@ -242,6 +288,31 @@ class _ChatScreenState extends State<ChatScreen> {
         });
       }
     }
+  }
+
+  void _onTypingChanged(String text) {
+    final currentUser = FirebaseAuth.instance.currentUser!;
+
+    // 타이핑 시작
+    FirebaseFirestore.instance
+      .collection('chats')
+      .doc(widget.chatId)
+      .collection('typing')
+      .doc(currentUser.uid)
+      .set({'isTyping': true});
+
+    // 기존 타이머 취소
+    _typingTimer?.cancel();
+
+    // 1초 후 타이핑 종료
+    _typingTimer = Timer(const Duration(seconds: 1), () {
+      FirebaseFirestore.instance
+        .collection('chats')
+        .doc(widget.chatId)
+        .collection('typing')
+        .doc(currentUser.uid)
+        .set({'isTyping': false});
+    });
   }
 
   void _scrollToBottom() {
@@ -468,6 +539,19 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
+          // 타이핑 중 표시
+          if (_isOtherTyping)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '입력 중...',
+                  style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                ),
+              ),
+            ),
+
           // 업로드 중 표시
           if (_isUploading)
             const Padding(
@@ -516,6 +600,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       ),
                       onSubmitted: (_) => _sendMessage(),
+                      onChanged: _onTypingChanged,
                     ),
                   ),
                   const SizedBox(width: 8),
