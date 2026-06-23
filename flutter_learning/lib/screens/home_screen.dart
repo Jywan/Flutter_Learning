@@ -6,6 +6,8 @@ import 'login_screen.dart';
 import 'chat_screen.dart';
 import 'search_screen.dart';
 import 'profile_screen.dart';
+import 'create_group_screen.dart';
+
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -86,11 +88,45 @@ class HomeScreen extends StatelessWidget {
             itemCount: chats.length,
             itemBuilder: (context, index) {
               final chat = chats[index].data() as Map<String, dynamic>;
-              final otherUserEmail = (chat['userEmails'] as List<dynamic>)
-                  .firstWhere((email) => email != currentUser.email,
-                      orElse: () => '알 수 없음');
+              final isGroup = chat['isGroup'] ?? false;
+              final displayName = isGroup
+                  ? chat['groupName'] ?? '그룹 채팅'
+                  : null;
+              final otherUserEmail = isGroup
+                  ? ''
+                  : (chat['userEmails'] as List<dynamic>)
+                      .firstWhere((email) => email != currentUser.email,
+                          orElse: () => '알 수 없음');
+
               final time = _formatTime(chat['lastMessageTime'] as Timestamp?);
 
+              // 그룹이면 FutureBuilder 없이 바로 표시
+              if (isGroup) {
+                return ListTile(
+                  leading: const CircleAvatar(child: Icon(Icons.group)),
+                  title: Text(displayName!),
+                  subtitle: Text(
+                    chat['lastMessage'] ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Text(time,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChatScreen(
+                          chatId: chats[index].id,
+                          otherUserEmail: displayName!,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }
+
+              // 1:1 채팅은 상대방 정보 조회
               return FutureBuilder<QuerySnapshot>(
                 future: FirebaseFirestore.instance
                     .collection('users')
@@ -142,14 +178,31 @@ class HomeScreen extends StatelessWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const SearchScreen()),
-          );
-        },
-        child: const Icon(Icons.chat),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'group',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const CreateGroupScreen()),
+              );
+            },
+            child: const Icon(Icons.group_add),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'chat',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SearchScreen()),
+              );
+            },
+            child: const Icon(Icons.chat),
+          ),
+        ],
       ),
     );
   }

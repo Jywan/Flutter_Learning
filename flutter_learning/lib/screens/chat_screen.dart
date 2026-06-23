@@ -27,11 +27,30 @@ class _ChatScreenState extends State<ChatScreen> {
   String _otherUserNickname = '';
   String? _otherUserProfileUrl;
   bool _isUploading = false;
+  bool _isGroup = false;
 
   @override
   void initState() {
     super.initState();
-    _loadOtherUserInfo();
+    _loadChatInfo();
+  }
+
+  Future<void> _loadChatInfo() async {
+    final doc = await FirebaseFirestore.instance
+      .collection('chats')
+      .doc(widget.chatId)
+      .get();
+
+    if (doc.exists) {
+      final data = doc.data()!;
+      setState(() {
+        _isGroup = data['isGroup'] ?? false;
+      });
+    }
+
+    if (!_isGroup) {
+      _loadOtherUserInfo();
+    }
   }
 
   Future<void> _loadOtherUserInfo() async {
@@ -164,17 +183,26 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             CircleAvatar(
               radius: 16,
-              backgroundImage: _otherUserProfileUrl != null
+              backgroundImage: (!_isGroup && _otherUserProfileUrl != null)
                   ? NetworkImage(_otherUserProfileUrl!)
                   : null,
-              child: _otherUserProfileUrl == null
-                  ? const Icon(Icons.person, size: 16)
-                  : null,
+              child: _isGroup
+                ? const Icon(Icons.group, size: 16)
+                : (_otherUserProfileUrl == null
+                    ? const Icon(Icons.person, size: 16)
+                    : null),
             ),
             const SizedBox(width: 8),
-            Text(_otherUserNickname.isNotEmpty
-                ? _otherUserNickname
-                : widget.otherUserEmail),
+            Expanded(
+              child: Text(
+                _isGroup
+                    ? widget.otherUserEmail
+                    : (_otherUserNickname.isNotEmpty
+                        ? _otherUserNickname
+                        : widget.otherUserEmail),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -233,46 +261,57 @@ class _ChatScreenState extends State<ChatScreen> {
                                       fontSize: 11, color: Colors.grey)),
                             ),
                           Flexible(
-                            child: Container(
-                              padding: type == 'image'
-                                ? const EdgeInsets.all(4)
-                                : const EdgeInsets.symmetric(
-                                    horizontal: 14, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: isMe ? Colors.blue[400] : Colors.grey[200],
-                                borderRadius: BorderRadius.only(
-                                  topLeft: const Radius.circular(16),
-                                  topRight: const Radius.circular(16),
-                                  bottomLeft: Radius.circular(isMe ? 16 : 4),
-                                  bottomRight: Radius.circular(isMe ? 4 : 16),
-                                ),
-                              ),
-                              child: type == 'image'
-                                ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.network(
-                                    msg['imageUrl'] ?? '',
-                                    width: 200,
-                                    fit: BoxFit.cover,
-                                    loadingBuilder: 
-                                      (context, child, loadingProgress) {
-                                        if (loadingProgress == null) return child;
-                                        return const SizedBox(
-                                          width: 200,
-                                          height: 150,
-                                          child: Center(
-                                            child:
-                                              CircularProgressIndicator()),
-                                        );
-                                      },
+                            child: Column(
+                              crossAxisAlignment: isMe
+                                  ? CrossAxisAlignment.end
+                                  : CrossAxisAlignment.start,
+                              children: [
+                                if (!isMe && _isGroup)
+                                  Padding(
+                                    padding: const EdgeInsets.only(left: 4, bottom: 2),
+                                    child: Text(
+                                      msg['senderEmail'] ?? '',
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                    ),
                                   ),
-                                )
-                              : Text(
-                                  msg['text'] ?? '',
-                                  style: TextStyle(
-                                    color: isMe ? Colors.white : Colors.black87,
+                                Container(
+                                  padding: type == 'image'
+                                      ? const EdgeInsets.all(4)
+                                      : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isMe ? Colors.blue[400] : Colors.grey[200],
+                                    borderRadius: BorderRadius.only(
+                                      topLeft: const Radius.circular(16),
+                                      topRight: const Radius.circular(16),
+                                      bottomLeft: Radius.circular(isMe ? 16 : 4),
+                                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                                    ),
                                   ),
+                                  child: type == 'image'
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: Image.network(
+                                            msg['imageUrl'] ?? '',
+                                            width: 200,
+                                            fit: BoxFit.cover,
+                                            loadingBuilder: (context, child, loadingProgress) {
+                                              if (loadingProgress == null) return child;
+                                              return const SizedBox(
+                                                width: 200,
+                                                height: 150,
+                                                child: Center(child: CircularProgressIndicator()),
+                                              );
+                                            },
+                                          ),
+                                        )
+                                      : Text(
+                                          msg['text'] ?? '',
+                                          style: TextStyle(
+                                            color: isMe ? Colors.white : Colors.black87,
+                                          ),
+                                        ),
                                 ),
+                              ],
                             ),
                           ),
                           if (!isMe)
