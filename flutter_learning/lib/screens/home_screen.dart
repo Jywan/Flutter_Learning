@@ -158,8 +158,27 @@ class HomeScreen extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: Text(time,
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(time,
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        const SizedBox(height: 4),
+                        StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance
+                            .collection('chats')
+                            .doc(chats[index].id)
+                            .collection('messages')
+                            .where('readBy', whereNotIn: [[currentUser.uid]])
+                            .snapshots(),
+                          builder: (context, msgSnapshot) {
+                            // readBy에 내 uid가 없는 메시지 수를 세야 함
+                            return const SizedBox.shrink();
+                          },
+                        )
+                      ],
+                    ),
                     onTap: () {
                       Navigator.push(
                         context,

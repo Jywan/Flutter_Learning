@@ -161,6 +161,61 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _leaveGroup() {
+    showDialog(
+      context: context, 
+      builder: (context) => AlertDialog(
+        title: const Text('채팅방 나가기'),
+        content: const Text('이 채팅방을 나가시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final currentUser = FirebaseAuth.instance.currentUser!;
+              await FirebaseFirestore.instance
+                .collection('chats')
+                .doc(widget.chatId)
+                .update({
+                  'users': FieldValue.arrayRemove([currentUser.uid]),
+                  'userEmails': FieldValue.arrayRemove([currentUser.email]),
+                });
+                if (mounted) {
+                  Navigator.pop(context);  // dialog 닫기
+                  Navigator.pop(context);  // 채팅방 나가기
+                }
+            }, 
+            child: const Text('나가기', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteMessage(DocumentReference ref) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('메시지 삭제'),
+        content: const Text('이 메세지를 삭제하시겠습니까?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text('취소')),
+          TextButton(
+            onPressed: () {
+              ref.delete();
+              Navigator.pop(context);
+            },
+            child: const Text('삭제', style: TextStyle(color: Colors.red))
+          ),
+        ],
+      ),
+    );
+  }
+
   void _markMessagesAsRead(List<QueryDocumentSnapshot> messages) {
     final currentUser = FirebaseAuth.instance.currentUser!;
 
@@ -227,6 +282,20 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
         ),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          if (_isGroup) 
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'leave') _leaveGroup();
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'leave',
+                  child: Text('채팅방 나가기'),
+                ),
+              ],
+            ),
+        ],
       ),
       body: Column(
         children: [
@@ -314,42 +383,45 @@ class _ChatScreenState extends State<ChatScreen> {
                                       style: const TextStyle(fontSize: 11, color: Colors.grey),
                                     ),
                                   ),
-                                Container(
-                                  padding: type == 'image'
-                                      ? const EdgeInsets.all(4)
-                                      : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                  decoration: BoxDecoration(
-                                    color: isMe ? Colors.blue[400] : Colors.grey[200],
-                                    borderRadius: BorderRadius.only(
-                                      topLeft: const Radius.circular(16),
-                                      topRight: const Radius.circular(16),
-                                      bottomLeft: Radius.circular(isMe ? 16 : 4),
-                                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                                GestureDetector(
+                                  onLongPress: isMe ? () => _deleteMessage(messages[index].reference) : null,
+                                  child: Container(
+                                    padding: type == 'image'
+                                        ? const EdgeInsets.all(4)
+                                        : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: isMe ? Colors.blue[400] : Colors.grey[200],
+                                      borderRadius: BorderRadius.only(
+                                        topLeft: const Radius.circular(16),
+                                        topRight: const Radius.circular(16),
+                                        bottomLeft: Radius.circular(isMe ? 16 : 4),
+                                        bottomRight: Radius.circular(isMe ? 4 : 16),
+                                      ),
                                     ),
+                                    child: type == 'image'
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(12),
+                                            child: Image.network(
+                                              msg['imageUrl'] ?? '',
+                                              width: 200,
+                                              fit: BoxFit.cover,
+                                              loadingBuilder: (context, child, loadingProgress) {
+                                                if (loadingProgress == null) return child;
+                                                return const SizedBox(
+                                                  width: 200,
+                                                  height: 150,
+                                                  child: Center(child: CircularProgressIndicator()),
+                                                );
+                                              },
+                                            ),
+                                          )
+                                        : Text(
+                                            msg['text'] ?? '',
+                                            style: TextStyle(
+                                              color: isMe ? Colors.white : Colors.black87,
+                                            ),
+                                          ),
                                   ),
-                                  child: type == 'image'
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(12),
-                                          child: Image.network(
-                                            msg['imageUrl'] ?? '',
-                                            width: 200,
-                                            fit: BoxFit.cover,
-                                            loadingBuilder: (context, child, loadingProgress) {
-                                              if (loadingProgress == null) return child;
-                                              return const SizedBox(
-                                                width: 200,
-                                                height: 150,
-                                                child: Center(child: CircularProgressIndicator()),
-                                              );
-                                            },
-                                          ),
-                                        )
-                                      : Text(
-                                          msg['text'] ?? '',
-                                          style: TextStyle(
-                                            color: isMe ? Colors.white : Colors.black87,
-                                          ),
-                                        ),
                                 ),
                               ],
                             ),
