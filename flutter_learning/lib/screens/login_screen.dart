@@ -1,4 +1,3 @@
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -61,6 +60,25 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() => _errorMessage = e.message ?? '오류가 발생했습니다.');
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() => _errorMessage = '이메일을 입력해주세요.');
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('비밀번호 재설정 이메일을 발송했습니다.')),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -139,6 +157,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
                 child: Text(_isLogin ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'),
               ),
+              if (_isLogin)
+                TextButton(
+                  onPressed: _resetPassword,
+                  child: const Text('비밀번호를 잊으셨나요?'),
+                ),
             ],
           ),
         )

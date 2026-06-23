@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart';
+import '../main.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -92,6 +93,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser!;
@@ -166,6 +169,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 child: const Text('닉네임 저장'),
               ),
+            ),
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // 다크 모드 토글
+            ValueListenableBuilder<ThemeMode>(
+              valueListenable: themeNotifier,
+              builder: (context, themeMode, child) {
+                return SwitchListTile(
+                  title: const Text('다크 모드'),
+                  secondary: Icon(
+                    themeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
+                  ),
+                  value: themeMode == ThemeMode.dark,
+                  onChanged: (value) {
+                    themeNotifier.value = value ? ThemeMode.dark : ThemeMode.light;
+                  },
+                );
+              },
             ),
           ],
         ),
