@@ -28,6 +28,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _otherUserProfileUrl;
   bool _isUploading = false;
   bool _isGroup = false;
+  int _memberCount = 0;
 
   @override
   void initState() {
@@ -43,8 +44,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (doc.exists) {
       final data = doc.data()!;
+      final users = data['users'] as List<dynamic>;
       setState(() {
         _isGroup = data['isGroup'] ?? false;
+        _memberCount = users.length;
       });
     }
 
@@ -84,6 +87,8 @@ class _ChatScreenState extends State<ChatScreen> {
       'text': text,
       'senderId': currentUser.uid,
       'senderEmail': currentUser.email,
+      'type': 'text',
+      'readBy': [currentUser.uid],
       'timestamp': FieldValue.serverTimestamp(),
     });
 
@@ -132,6 +137,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'senderId': currentUser.uid,
           'senderEmail': currentUser.email,
           'type': 'image',
+          'readBy': [currentUser.uid],
           'timestamp': FieldValue.serverTimestamp(),
         });
       
@@ -152,6 +158,21 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } finally {
       setState(() => _isUploading = false);
+    }
+  }
+
+  void _markMessagesAsRead(List<QueryDocumentSnapshot> messages) {
+    final currentUser = FirebaseAuth.instance.currentUser!;
+
+    for (final msg in messages) {
+      final data = msg.data() as Map<String, dynamic>;
+      final readBy = List<String>.from(data['readBy'] ?? []);
+
+      if (!readBy.contains(currentUser.uid)) {
+        msg.reference.update({
+          'readBy': FieldValue.arrayUnion([currentUser.uid]),
+        });
+      }
     }
   }
 
@@ -224,6 +245,10 @@ class _ChatScreenState extends State<ChatScreen> {
 
                 final messages = snapshot.data?.docs ?? [];
 
+                if (messages.isNotEmpty) {
+                  _markMessagesAsRead(messages);
+                }
+
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -256,9 +281,24 @@ class _ChatScreenState extends State<ChatScreen> {
                           if (isMe)
                             Padding(
                               padding: const EdgeInsets.only(right: 4),
-                              child: Text(time,
-                                  style: const TextStyle(
-                                      fontSize: 11, color: Colors.grey)),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  if (_memberCount > 0) 
+                                    Builder(builder: (context) {
+                                      final readBy = List<String>.from(msg['readBy'] ?? []);
+                                      final unreadCount = _memberCount - readBy.length;
+                                      if (unreadCount > 0) {
+                                        return Text(
+                                          '$unreadCount',
+                                          style: const TextStyle(fontSize: 11, color: Colors.amber),
+                                        );
+                                      }
+                                      return const SizedBox.shrink();
+                                    }),
+                                    Text(time, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                                ],
+                              ),
                             ),
                           Flexible(
                             child: Column(
